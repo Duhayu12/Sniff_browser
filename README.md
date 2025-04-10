@@ -1,2 +1,2 @@
 # Sniff_browser
-saveLogs() 
+'''saveLogs() 
