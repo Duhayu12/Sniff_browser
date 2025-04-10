@@ -1,6 +1,6 @@
 ## Cara Menyimpan Log Fetch/XHR
 
-Setelah kamu selesai melakukan aktivitas di website, buka console browser lalu ketik perintah berikut untuk menyimpan semua log ke file:
+Gunakan script dan paste di console sebelum aktivitas,setelah kamu selesai melakukan aktivitas di website lalu paste :
 
 ```javascript
 saveLogs()
