@@ -1,1 +1,2 @@
 # Sniff_browser
+saveLogs() 
