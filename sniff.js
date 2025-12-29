@@ -1,64 +1,128 @@
-(function () {
-  if (window.__SPX_RECORDER__) {
-    console.warn("Recorder sudah aktif");
+(() => {
+  if (window.__SPX_NAME_ADDR__) {
+    console.warn("SPX Name & Address Recorder sudah aktif");
     return;
   }
 
-  window.__SPX_RECORDER__ = {
-    data: [],
-    currentShipment: null
+  console.log("🚀 SPX NAME & ADDRESS RECORDER AKTIF");
+
+  window.__SPX_NAME_ADDR__ = {
+    records: {},
+    lastShipment: null
   };
 
-  console.log("✅ SPX Recorder AKTIF");
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-  // Tangkap shipment_id dari URL
+  const TARGET_FIELDS = [
+    "buyer_name",
+    "buyer_addr",
+    "return_receiver_name",
+    "return_dest_detail_addr"
+  ];
+
   const getShipmentId = () => {
-    const match = location.href.match(/SPXID[0-9A-Z]+/);
-    return match ? match[0] : null;
+    const m = location.href.match(/SPXID[0-9A-Z]+/);
+    return m ? m[0] : null;
   };
 
-  // Hook fetch
-  const originalFetch = window.fetch;
-  window.fetch = async function (...args) {
-    const res = await originalFetch.apply(this, args);
+  async function processShipment(shipmentId) {
+    if (window.__SPX_NAME_ADDR__.records[shipmentId]) {
+      console.log("⏭️ Sudah direkam:", shipmentId);
+      return;
+    }
+
+    console.log("📦 Proses:", shipmentId);
+
+    const record = {
+      shipment_id: shipmentId,
+      buyer_name: "",
+      buyer_addr: "",
+      return_receiver_name: "",
+      return_dest_detail_addr: ""
+    };
 
     try {
-      const url = args[0]?.toString() || "";
-      if (url.includes("show_sensitive_data")) {
-        const clone = res.clone();
-        const json = await clone.json();
+      const trade = await fetch(
+        `https://spx.shopee.co.id/api/fleet_order/order/detail/trade_info?shipment_id=${shipmentId}`,
+        { credentials: "include" }
+      ).then(r => r.json());
 
-        const shipment_id = new URL(url).searchParams.get("shipment_id");
-        const field = new URL(url).searchParams.get("data_field");
-        const value = json?.data?.data_detail || null;
+      const allowed =
+        trade?.data?.sensitive_permission?.click_to_view_field_list || [];
 
-        window.__SPX_RECORDER__.data.push({
-          time: new Date().toISOString(),
-          shipment_id,
-          field,
-          value
-        });
+      for (const field of TARGET_FIELDS) {
+        if (!allowed.includes(field)) continue;
 
-        console.log("📥 Terekam:", shipment_id, field, value);
+        try {
+          const res = await fetch(
+            `https://spx.shopee.co.id/api/fleet_order/order/detail/show_sensitive_data?shipment_id=${shipmentId}&data_field=${field}`,
+            { credentials: "include", cache: "no-store" }
+          );
+          const json = await res.json();
+          record[field] = json?.data?.data_detail || "";
+          console.log("✔️", field, "=", record[field]);
+          await sleep(300);
+        } catch {
+          record[field] = "";
+        }
       }
-    } catch (e) {}
 
-    return res;
+      window.__SPX_NAME_ADDR__.records[shipmentId] = record;
+    } catch (e) {
+      console.error("❌ Gagal:", shipmentId);
+    }
+  }
+
+  // SPA URL observer
+  const pushState = history.pushState;
+  history.pushState = function () {
+    pushState.apply(history, arguments);
+    setTimeout(check, 800);
   };
 
-  // Helper export
-  window.exportSPX = function () {
-    const data = window.__SPX_RECORDER__.data;
+  window.addEventListener("popstate", () => setTimeout(check, 800));
 
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
-      type: "application/json"
-    });
+  async function check() {
+    const shipmentId = getShipmentId();
+    if (!shipmentId) return;
+    if (shipmentId === window.__SPX_NAME_ADDR__.lastShipment) return;
+
+    window.__SPX_NAME_ADDR__.lastShipment = shipmentId;
+    await sleep(500);
+    processShipment(shipmentId);
+  }
+
+  check();
+
+  // EXPORT CSV
+  window.exportSPXCSV = () => {
+    const data = Object.values(window.__SPX_NAME_ADDR__.records);
+    if (!data.length) {
+      console.warn("❌ Tidak ada data");
+      return;
+    }
+
+    const headers = [
+      "shipment_id",
+      "buyer_name",
+      "buyer_addr",
+      "return_receiver_name",
+      "return_dest_detail_addr"
+    ];
+
+    const rows = [
+      headers.join(","),
+      ...data.map(o =>
+        headers.map(h => `"${(o[h] || "").replace(/"/g, '""')}"`).join(",")
+      )
+    ];
+
+    const blob = new Blob([rows.join("\n")], { type: "text/csv" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "spx_recorded_data.json";
+    a.download = "spx_nama_alamat.csv";
     a.click();
 
-    console.log("📁 File disimpan: spx_recorded_data.json");
+    console.log("📁 CSV siap: spx_nama_alamat.csv");
   };
-
 })();
